@@ -1,48 +1,48 @@
-import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useCallback, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "react-toastify";
+import { uploadFileService } from "@/services/api/uploadService";
+import { cn } from "@/utils/cn";
+import ApperIcon from "@/components/ApperIcon";
 import DropZone from "@/components/molecules/DropZone";
 import UploadQueue from "@/components/molecules/UploadQueue";
 import Button from "@/components/atoms/Button";
-import ApperIcon from "@/components/ApperIcon";
-import { uploadFileService } from "@/services/api/uploadService";
-import { cn } from "@/utils/cn";
 
 const FileUploader = ({ className = "" }) => {
-  const [files, setFiles] = useState([]);
+const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const handleFilesAdded = useCallback((newFiles) => {
-    setFiles(prev => [...prev, ...newFiles]);
-    toast.success(`Added ${newFiles.length} file${newFiles.length !== 1 ? "s" : ""} to queue`, {
+const handleFileAdded = useCallback((newFile) => {
+    setFile(newFile);
+    toast.success("File added to upload queue", {
       position: "top-right",
       autoClose: 2000
     });
   }, []);
 
-  const handleRemoveFile = useCallback((fileId) => {
-    setFiles(prev => prev.filter(file => file.id !== fileId));
+const handleRemoveFile = useCallback(() => {
+    setFile(null);
   }, []);
 
-  const handleRetryFile = useCallback(async (fileId) => {
-    const fileToRetry = files.find(f => f.id === fileId);
-    if (!fileToRetry) return;
+const handleRetryFile = useCallback(async () => {
+    if (!file) return;
 
     // Reset file status
-    setFiles(prev => prev.map(file => 
-      file.id === fileId 
-        ? { ...file, status: "uploading", progress: 0, error: null }
-        : file
-    ));
+    setFile(prev => ({
+      ...prev,
+      status: "uploading",
+      progress: 0,
+      error: null
+    }));
 
     try {
-      await uploadSingleFile(fileToRetry);
+      await uploadSingleFile(file);
     } catch (error) {
       console.error("Retry upload failed:", error);
     }
-  }, [files]);
+  }, [file]);
 
-  const uploadSingleFile = useCallback(async (file) => {
+const uploadSingleFile = useCallback(async (fileToUpload) => {
     return new Promise((resolve, reject) => {
       // Simulate upload progress
       let progress = 0;
@@ -53,25 +53,20 @@ const FileUploader = ({ className = "" }) => {
           clearInterval(progressInterval);
           
           // Update file status to completed
-          setFiles(prev => prev.map(f => 
-            f.id === file.id 
-              ? { 
-                  ...f, 
-                  status: "completed", 
-                  progress: 100,
-                  uploadedAt: new Date().toISOString()
-                }
-              : f
-          ));
+          setFile(prev => ({
+            ...prev,
+            status: "completed",
+            progress: 100,
+            uploadedAt: new Date().toISOString()
+          }));
           
           resolve();
         } else {
           // Update progress
-          setFiles(prev => prev.map(f => 
-            f.id === file.id 
-              ? { ...f, progress: Math.round(progress) }
-              : f
-          ));
+          setFile(prev => ({
+            ...prev,
+            progress: Math.round(progress)
+          }));
         }
       }, 200);
 
@@ -79,112 +74,91 @@ const FileUploader = ({ className = "" }) => {
       setTimeout(() => {
         if (Math.random() < 0.1 && progress < 100) {
           clearInterval(progressInterval);
-          setFiles(prev => prev.map(f => 
-            f.id === file.id 
-              ? { 
-                  ...f, 
-                  status: "error", 
-                  error: "Upload failed. Please try again."
-                }
-              : f
-          ));
+          setFile(prev => ({
+            ...prev,
+            status: "error",
+            error: "Upload failed. Please try again."
+          }));
           reject(new Error("Upload failed"));
         }
       }, Math.random() * 2000 + 1000);
     });
   }, []);
 
-  const handleUploadAll = useCallback(async () => {
-    const pendingFiles = files.filter(f => f.status === "pending" || f.status === "error");
-    
-    if (pendingFiles.length === 0) {
-      toast.warning("No files to upload");
+const handleUploadFile = useCallback(async () => {
+    if (!file || (file.status !== "pending" && file.status !== "error")) {
+      toast.warning("No file to upload");
       return;
     }
 
     setIsUploading(true);
 
-    // Update all pending files to uploading status
-    setFiles(prev => prev.map(file => 
-      (file.status === "pending" || file.status === "error")
-        ? { ...file, status: "uploading", progress: 0, error: null }
-        : file
-    ));
+    // Update file to uploading status
+    setFile(prev => ({
+      ...prev,
+      status: "uploading",
+      progress: 0,
+      error: null
+    }));
 
     try {
-      // Upload files in parallel
-      const uploadPromises = pendingFiles.map(file => uploadSingleFile(file));
-      await Promise.allSettled(uploadPromises);
-
-      const completedCount = files.filter(f => f.status === "completed").length;
-      const totalFiles = files.length;
-
-      if (completedCount === totalFiles) {
-        toast.success(`All ${totalFiles} files uploaded successfully!`, {
-          position: "top-right",
-          autoClose: 3000
-        });
-      } else {
-        const failedCount = totalFiles - completedCount;
-        toast.warning(`${completedCount} files uploaded, ${failedCount} failed`, {
-          position: "top-right",
-          autoClose: 4000
-        });
-      }
+      await uploadSingleFile(file);
+      
+      toast.success("File uploaded successfully!", {
+        position: "top-right",
+        autoClose: 3000
+      });
     } catch (error) {
-      toast.error("Upload process encountered errors", {
+      toast.error("Upload failed. Please try again.", {
         position: "top-right",
         autoClose: 3000
       });
     } finally {
       setIsUploading(false);
     }
-  }, [files, uploadSingleFile]);
+  }, [file, uploadSingleFile]);
 
-  const handleClearCompleted = useCallback(() => {
-    const completedFiles = files.filter(f => f.status === "completed");
-    if (completedFiles.length === 0) {
-      toast.info("No completed files to clear");
+const handleClearCompleted = useCallback(() => {
+    if (!file || file.status !== "completed") {
+      toast.info("No completed file to clear");
       return;
     }
 
-    setFiles(prev => prev.filter(file => file.status !== "completed"));
-    toast.success(`Cleared ${completedFiles.length} completed file${completedFiles.length !== 1 ? "s" : ""}`, {
+    setFile(null);
+    toast.success("Cleared completed file", {
       position: "top-right",
       autoClose: 2000
     });
-  }, [files]);
+  }, [file]);
 
-  const handleClearAll = useCallback(() => {
-    if (files.length === 0) {
-      toast.info("No files to clear");
+const handleClearAll = useCallback(() => {
+    if (!file) {
+      toast.info("No file to clear");
       return;
     }
 
-    setFiles([]);
-    toast.success("Cleared all files from queue", {
+    setFile(null);
+    toast.success("Cleared file from queue", {
       position: "top-right",
       autoClose: 2000
     });
-  }, [files]);
+  }, [file]);
 
-  const pendingFiles = files.filter(f => f.status === "pending" || f.status === "error");
-  const completedFiles = files.filter(f => f.status === "completed");
-  const uploadingFiles = files.filter(f => f.status === "uploading");
-
+const isPending = file && (file.status === "pending" || file.status === "error");
+  const isCompleted = file && file.status === "completed";
+  const isFileUploading = file && file.status === "uploading";
   return (
     <div className={cn("space-y-8", className)}>
       {/* Drop Zone */}
-      <DropZone
-        onFilesAdded={handleFilesAdded}
-        multiple={true}
+<DropZone
+        onFileAdded={handleFileAdded}
+multiple={false}
         maxSize={100 * 1024 * 1024} // 100MB
-        disabled={isUploading}
+        disabled={isUploading || !!file}
       />
-
       {/* Upload Queue */}
       <AnimatePresence>
-        {files.length > 0 && (
+{file && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -192,7 +166,7 @@ const FileUploader = ({ className = "" }) => {
             transition={{ duration: 0.3 }}
           >
             <UploadQueue
-              files={files}
+              file={file}
               onRemoveFile={handleRemoveFile}
               onRetryFile={handleRetryFile}
             />
@@ -202,7 +176,7 @@ const FileUploader = ({ className = "" }) => {
 
       {/* Action Buttons */}
       <AnimatePresence>
-        {files.length > 0 && (
+{file && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -210,9 +184,9 @@ const FileUploader = ({ className = "" }) => {
             transition={{ duration: 0.3 }}
             className="flex flex-wrap items-center justify-center gap-4 p-6 bg-white rounded-lg border border-gray-200 shadow-sm"
           >
-            {pendingFiles.length > 0 && (
+            {isPending && (
               <Button
-                onClick={handleUploadAll}
+                onClick={handleUploadFile}
                 disabled={isUploading}
                 size="lg"
                 className="flex-1 sm:flex-none"
@@ -225,19 +199,19 @@ const FileUploader = ({ className = "" }) => {
                     >
                       <ApperIcon name="Upload" className="w-5 h-5 mr-2" />
                     </motion.div>
-                    Uploading... ({uploadingFiles.length}/{pendingFiles.length + uploadingFiles.length})
+                    Uploading File...
                   </>
                 ) : (
                   <>
                     <ApperIcon name="Upload" className="w-5 h-5 mr-2" />
-                    Upload {pendingFiles.length} File{pendingFiles.length !== 1 ? "s" : ""}
+                    Upload File
                   </>
                 )}
               </Button>
             )}
 
             <div className="flex items-center space-x-2">
-              {completedFiles.length > 0 && (
+              {isCompleted && (
                 <Button
                   onClick={handleClearCompleted}
                   variant="secondary"
@@ -257,7 +231,7 @@ const FileUploader = ({ className = "" }) => {
                 className="text-gray-600 hover:text-red-600 hover:bg-red-50"
               >
                 <ApperIcon name="Trash2" className="w-4 h-4 mr-2" />
-                Clear All
+                Clear File
               </Button>
             </div>
           </motion.div>

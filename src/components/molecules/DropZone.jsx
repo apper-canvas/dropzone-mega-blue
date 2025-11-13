@@ -5,9 +5,9 @@ import Button from "@/components/atoms/Button";
 import { cn } from "@/utils/cn";
 
 const DropZone = ({ 
-  onFilesAdded,
+onFileAdded,
   accept = "*/*",
-  multiple = true,
+  multiple = false,
   maxSize = 100 * 1024 * 1024, // 100MB
   disabled = false,
   className = ""
@@ -24,51 +24,42 @@ const DropZone = ({
   }, [maxSize]);
 
   const processFiles = useCallback((files) => {
-    const fileArray = Array.from(files);
-    const validFiles = [];
-    const errors = [];
-
-    fileArray.forEach(file => {
-      const error = validateFile(file);
-      if (error) {
-        errors.push(`${file.name}: ${error}`);
-      } else {
-        // Create file object with preview for images
-        const fileObj = {
-          id: Date.now() + Math.random(),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          status: "pending",
-          progress: 0,
-          file: file,
-          preview: null,
-          uploadedAt: null,
-          error: null
-        };
-
-        // Generate preview for images
-        if (file.type.startsWith("image/")) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            fileObj.preview = e.target.result;
-          };
-          reader.readAsDataURL(file);
-        }
-
-        validFiles.push(fileObj);
-      }
-    });
-
-    if (validFiles.length > 0) {
-      onFilesAdded(validFiles);
+const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+    
+    const file = fileArray[0]; // Only process the first file
+    const error = validateFile(file);
+    
+    if (error) {
+      console.warn("File validation error:", `${file.name}: ${error}`);
+      return;
     }
 
-    if (errors.length > 0) {
-      // Handle errors - could show toast notifications
-      console.warn("File validation errors:", errors);
+    // Create file object with preview for images
+    const fileObj = {
+      id: Date.now() + Math.random(),
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      status: "pending",
+      progress: 0,
+      file: file,
+      preview: null,
+      uploadedAt: null,
+      error: null
+    };
+
+    // Generate preview for images
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        fileObj.preview = e.target.result;
+      };
+      reader.readAsDataURL(file);
     }
-  }, [onFilesAdded, validateFile]);
+
+    onFileAdded(fileObj);
+  }, [onFileAdded, validateFile]);
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -97,13 +88,13 @@ const DropZone = ({
 
     if (disabled) return;
 
-    const files = e.dataTransfer.files;
+const files = e.dataTransfer.files;
     if (files.length > 0) {
       processFiles(files);
     }
   }, [disabled, processFiles]);
 
-  const handleFileInput = useCallback((e) => {
+const handleFileInput = useCallback((e) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       processFiles(files);
@@ -184,23 +175,23 @@ const DropZone = ({
             <h3 className="text-lg font-semibold text-gray-900">
               {isDragOver ? "Drop files here" : "Upload your files"}
             </h3>
-            <p className="text-gray-600 max-w-sm mx-auto">
+<p className="text-gray-600 max-w-sm mx-auto">
               {isDragOver 
-                ? "Release to add files to your upload queue"
-                : "Drag and drop files here, or click to browse"
+                ? "Release to add file to your upload queue"
+                : "Drag and drop a file here, or click to browse"
               }
             </p>
           </div>
 
           {!isDragOver && (
-            <Button
+<Button
               variant="outline"
               size="lg"
               className="mt-6"
               disabled={disabled}
             >
               <ApperIcon name="FolderOpen" className="w-5 h-5 mr-2" />
-              Choose Files
+              Choose File
             </Button>
           )}
         </motion.div>
